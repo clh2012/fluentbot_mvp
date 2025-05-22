@@ -27,6 +27,7 @@ export default async function handler(req, res) {
   if (data.choices && data.choices.length > 0) {
     res.status(200).json({ reply: data.choices[0].message.content });
   } else {
+    console.error("API error:", data);
     res.status(500).json({ reply: "Lo siento, ha ocurrido un error." });
   }
 }
