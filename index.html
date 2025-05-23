@@ -92,6 +92,48 @@
   <button id="recordBtn">🎤 Start Recording</button>
   <button id="stopBtn" disabled>⏹️ Stop</button>
 </div>
+<div style="margin-top: 2em;">
+  <button id="recordBtn">🎤 Start Recording</button>
+  <p id="recordingStatus"></p>
+  <audio id="audioPlayback" controls style="display:none;"></audio>
+</div>
+
+<script>
+  let mediaRecorder;
+  let recordedChunks = [];
+
+  const recordBtn = document.getElementById("recordBtn");
+  const status = document.getElementById("recordingStatus");
+  const audioPlayback = document.getElementById("audioPlayback");
+
+  recordBtn.onclick = async () => {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      recordedChunks = [];
+
+      mediaRecorder.ondataavailable = event => {
+        if (event.data.size > 0) recordedChunks.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: "audio/webm" });
+        const audioURL = URL.createObjectURL(blob);
+        audioPlayback.src = audioURL;
+        audioPlayback.style.display = "block";
+        status.textContent = "Recording complete.";
+        // You can now send 'blob' to your backend for Whisper
+      };
+
+      mediaRecorder.start();
+      recordBtn.textContent = "🛑 Stop Recording";
+      status.textContent = "Recording...";
+    } else if (mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      recordBtn.textContent = "🎤 Start Recording";
+    }
+  };
+</script>
 
 
   <div id="chat-container"></div>
