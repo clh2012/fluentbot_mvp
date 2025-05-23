@@ -1,13 +1,33 @@
 export default async function handler(req, res) {
-  const userMessage = req.body.message;
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-  const ELEVENLABS_VOICE_ID = "Ir1QNHvhaJXbAGhT50w3"; // Replace with your actual voice ID
+  const ELEVENLABS_VOICE_ID = "Ir1QNHvhaJXbAGhT50w3"; // Replace with your real ElevenLabs voice ID
+
+  let userMessage = req.body.message;
 
   try {
-    console.log("Received user message:", userMessage);
+    // 1. If audio is present, transcribe it using Whisper
+    if (!userMessage && req.body.audioBase64) {
+      const audioBuffer = Buffer.from(req.body.audioBase64, 'base64');
 
-    // 1. Send message to OpenAI
+      const whisperResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`
+        },
+        body: (() => {
+          const formData = new FormData();
+          formData.append("file", new Blob([audioBuffer], { type: "audio/webm" }), "audio.webm");
+          formData.append("model", "whisper-1");
+          return formData;
+        })()
+      });
+
+      const whisperData = await whisperResponse.json();
+      userMessage = whisperData.text || "Lo siento, no pude entenderte.";
+    }
+
+    // 2. Send message to OpenAI
     const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -30,14 +50,9 @@ export default async function handler(req, res) {
     });
 
     const chatData = await chatResponse.json();
-    console.log("OpenAI response:", chatData);
+    const replyText = chatData?.choices?.[0]?.message?.content || "Lo siento, ha ocurrido un error.";
 
-    const replyText = chatData?.choices?.[0]?.message?.content;
-    if (!replyText) {
-      throw new Error("No replyText from OpenAI");
-    }
-
-    // 2. Convert reply to speech via ElevenLabs
+    // 3. Convert reply to speech via ElevenLabs
     const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
       method: "POST",
       headers: {
@@ -54,16 +69,10 @@ export default async function handler(req, res) {
       })
     });
 
-    if (!ttsResponse.ok) {
-      const errText = await ttsResponse.text();
-      console.error("ElevenLabs TTS error:", errText);
-      throw new Error("TTS failed");
-    }
-
     const audioBuffer = await ttsResponse.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString("base64");
 
-    // 3. Return reply text + audio
+    // 4. Return reply + audio
     res.status(200).json({
       reply: replyText,
       audioBase64: base64Audio
