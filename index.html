@@ -1,135 +1,150 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Fluent Bot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FluentBot</title>
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #f0f4f8;
-      margin: 0;
-      padding: 2rem;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f9f9f9;
       display: flex;
       flex-direction: column;
       align-items: center;
+      margin: 0;
+      padding: 0;
     }
 
     h1 {
+      margin-top: 1rem;
       color: #333;
     }
 
-    #chat {
-      width: 100%;
+    #chat-container {
+      width: 90%;
       max-width: 600px;
-      background: white;
+      height: 70vh;
+      border: 1px solid #ddd;
       border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
       padding: 1rem;
+      background-color: #fff;
       overflow-y: auto;
-      max-height: 500px;
-      margin-bottom: 1rem;
+      margin-top: 1rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     }
 
     .message {
-      margin: 0.5rem 0;
-      padding: 0.75rem;
-      border-radius: 6px;
+      margin-bottom: 1rem;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      max-width: 80%;
+      word-wrap: break-word;
     }
 
-    .user {
-      background: #d0e7ff;
+    .message.user {
+      background-color: #e0f7fa;
       align-self: flex-end;
       text-align: right;
+      margin-left: auto;
     }
 
-    .bot {
-      background: #e2f7e2;
+    .message.bot {
+      background-color: #f1f8e9;
       align-self: flex-start;
       text-align: left;
+      margin-right: auto;
     }
 
-    #inputSection {
-      display: flex;
-      width: 100%;
+    #chat-form {
+      width: 90%;
       max-width: 600px;
+      display: flex;
+      margin-top: 1rem;
     }
 
-    #userInput {
+    #user-input {
       flex: 1;
       padding: 0.75rem;
-      font-size: 1rem;
       border: 1px solid #ccc;
-      border-radius: 6px 0 0 6px;
-      outline: none;
+      border-radius: 8px 0 0 8px;
+      font-size: 1rem;
     }
 
-    #sendBtn {
-      background: #2d89ef;
-      color: white;
-      padding: 0.75rem 1.25rem;
-      font-size: 1rem;
+    button {
+      padding: 0.75rem 1.2rem;
       border: none;
-      border-radius: 0 6px 6px 0;
+      background-color: #007bff;
+      color: white;
+      border-radius: 0 8px 8px 0;
+      font-size: 1rem;
       cursor: pointer;
     }
 
-    #sendBtn:hover {
-      background: #1b5fcc;
+    button:hover {
+      background-color: #0056b3;
     }
   </style>
 </head>
 <body>
-  <h1>🗣️ Fluent Bot</h1>
-  <div id="chat"></div>
-  <div id="inputSection">
-    <input type="text" id="userInput" placeholder="Escribe algo en español..." />
-    <button id="sendBtn">Enviar</button>
-  </div>
+  <h1>🗣️ FluentBot</h1>
+
+  <div id="chat-container"></div>
+
+  <form id="chat-form">
+    <input id="user-input" type="text" placeholder="Escribe algo..." autocomplete="off" />
+    <button type="submit">Enviar</button>
+  </form>
 
   <script>
-    const chat = document.getElementById('chat');
-    const input = document.getElementById('userInput');
-    const sendBtn = document.getElementById('sendBtn');
+    const chatForm = document.getElementById("chat-form");
+    const userInput = document.getElementById("user-input");
+    const chatContainer = document.getElementById("chat-container");
 
-    function appendMessage(text, sender) {
-      const msg = document.createElement('div');
-      msg.className = `message ${sender}`;
-      msg.textContent = text;
-      chat.appendChild(msg);
-      chat.scrollTop = chat.scrollHeight;
-    }
+    chatForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = userInput.value.trim();
+      if (!message) return;
 
-    async function sendMessage() {
-      const userText = input.value.trim();
-      if (!userText) return;
-
-      appendMessage(userText, 'user');
-      input.value = '';
-      sendBtn.disabled = true;
-      sendBtn.textContent = '...';
+      appendMessage("user", message);
+      userInput.value = "";
 
       try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: userText })
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message }),
         });
 
-        const data = await res.json();
-        appendMessage(data.reply, 'bot');
-      } catch (err) {
-        appendMessage('Error: no se pudo obtener respuesta.', 'bot');
-      }
+        const data = await response.json();
 
-      sendBtn.disabled = false;
-      sendBtn.textContent = 'Enviar';
+        if (data.reply) {
+          appendMessage("bot", data.reply);
+        }
+
+        if (data.audioBase64) {
+          playAudio(data.audioBase64);
+        }
+
+      } catch (error) {
+        console.error("Error:", error);
+        appendMessage("bot", "Lo siento, ha ocurrido un error.");
+      }
+    });
+
+    function appendMessage(sender, text) {
+      const messageElem = document.createElement("div");
+      messageElem.className = `message ${sender}`;
+      messageElem.textContent = text;
+      chatContainer.appendChild(messageElem);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    sendBtn.addEventListener('click', sendMessage);
-    input.addEventListener('keypress', e => {
-      if (e.key === 'Enter') sendMessage();
-    });
+    function playAudio(base64) {
+      const audio = new Audio(`data:audio/mpeg;base64,${base64}`);
+      audio.play();
+    }
   </script>
 </body>
 </html>
