@@ -83,58 +83,19 @@
     button:hover {
       background-color: #0056b3;
     }
+
+    .mic-buttons {
+      margin-top: 1em;
+    }
+
+    #recordingStatus {
+      margin-top: 0.5em;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <h1>🗣️ FluentBot</h1>
-
-<div style="margin-top: 1em;">
-  <button id="recordBtn">🎤 Start Recording</button>
-  <button id="stopBtn" disabled>⏹️ Stop</button>
-</div>
-<div style="margin-top: 2em;">
-  <button id="recordBtn">🎤 Start Recording</button>
-  <p id="recordingStatus"></p>
-  <audio id="audioPlayback" controls style="display:none;"></audio>
-</div>
-
-<script>
-  let mediaRecorder;
-  let recordedChunks = [];
-
-  const recordBtn = document.getElementById("recordBtn");
-  const status = document.getElementById("recordingStatus");
-  const audioPlayback = document.getElementById("audioPlayback");
-
-  recordBtn.onclick = async () => {
-    if (!mediaRecorder || mediaRecorder.state === "inactive") {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      recordedChunks = [];
-
-      mediaRecorder.ondataavailable = event => {
-        if (event.data.size > 0) recordedChunks.push(event.data);
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: "audio/webm" });
-        const audioURL = URL.createObjectURL(blob);
-        audioPlayback.src = audioURL;
-        audioPlayback.style.display = "block";
-        status.textContent = "Recording complete.";
-        // You can now send 'blob' to your backend for Whisper
-      };
-
-      mediaRecorder.start();
-      recordBtn.textContent = "🛑 Stop Recording";
-      status.textContent = "Recording...";
-    } else if (mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-      recordBtn.textContent = "🎤 Start Recording";
-    }
-  };
-</script>
-
 
   <div id="chat-container"></div>
 
@@ -143,42 +104,32 @@
     <button type="submit">Enviar</button>
   </form>
 
+  <div class="mic-buttons">
+    <button id="recordBtn">🎤 Start Recording</button>
+    <button id="stopBtn" disabled>⏹️ Stop</button>
+    <p id="recordingStatus">Ready</p>
+  </div>
+
+  <audio id="audioPlayback" controls style="display:none;"></audio>
+
   <script>
     const chatForm = document.getElementById("chat-form");
     const userInput = document.getElementById("user-input");
     const chatContainer = document.getElementById("chat-container");
+    const recordBtn = document.getElementById("recordBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const status = document.getElementById("recordingStatus");
+    const audioPlayback = document.getElementById("audioPlayback");
+
+    let recorder;
+    let audioChunks = [];
 
     chatForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const message = userInput.value.trim();
       if (!message) return;
-
-      appendMessage("user", message);
+      sendMessage(message);
       userInput.value = "";
-
-      try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message }),
-        });
-
-        const data = await response.json();
-
-        if (data.reply) {
-          appendMessage("bot", data.reply);
-        }
-
-        if (data.audioBase64) {
-          playAudio(data.audioBase64);
-        }
-
-      } catch (error) {
-        console.error("Error:", error);
-        appendMessage("bot", "Lo siento, ha ocurrido un error.");
-      }
     });
 
     function appendMessage(sender, text) {
@@ -193,51 +144,71 @@
       const audio = new Audio(`data:audio/mpeg;base64,${base64}`);
       audio.play();
     }
-<script>
-let recorder;
-let audioChunks = [];
 
-document.getElementById("recordBtn").addEventListener("click", async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  recorder = new MediaRecorder(stream);
-  audioChunks = [];
-
-  recorder.ondataavailable = event => {
-    if (event.data.size > 0) {
-      audioChunks.push(event.data);
+    async function sendMessage(message) {
+      appendMessage("user", message);
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message }),
+        });
+        const data = await response.json();
+        if (data.reply) appendMessage("bot", data.reply);
+        if (data.audioBase64) playAudio(data.audioBase64);
+      } catch (error) {
+        console.error("Error:", error);
+        appendMessage("bot", "Lo siento, ha ocurrido un error.");
+      }
     }
-  };
 
-  recorder.onstop = async () => {
-    const blob = new Blob(audioChunks, { type: "audio/webm" });
-    const formData = new FormData();
-    formData.append("audio", blob);
+    recordBtn.addEventListener("click", async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream);
+      audioChunks = [];
 
-    const res = await fetch("/api/transcribe", {
-      method: "POST",
-      body: formData
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) audioChunks.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: "audio/webm" });
+        const formData = new FormData();
+        formData.append("audio", blob);
+
+        status.textContent = "Transcribing...";
+        try {
+          const res = await fetch("/api/transcribe", {
+            method: "POST",
+            body: formData
+          });
+
+          const data = await res.json();
+          if (data.transcript) {
+            sendMessage(data.transcript);
+            status.textContent = "✅ Transcribed";
+          } else {
+            status.textContent = "⚠️ Transcription failed";
+          }
+        } catch (err) {
+          console.error(err);
+          status.textContent = "⚠️ Error";
+        }
+      };
+
+      recorder.start();
+      recordBtn.disabled = true;
+      stopBtn.disabled = false;
+      status.textContent = "🎙️ Recording...";
     });
 
-    const data = await res.json();
-    if (data.transcript) {
-      sendMessage(data.transcript); // Reuse your existing chat flow
-    } else {
-      alert("Transcription failed");
-    }
-  };
-
-  recorder.start();
-  document.getElementById("recordBtn").disabled = true;
-  document.getElementById("stopBtn").disabled = false;
-});
-
-document.getElementById("stopBtn").addEventListener("click", () => {
-  recorder.stop();
-  document.getElementById("recordBtn").disabled = false;
-  document.getElementById("stopBtn").disabled = true;
-});
-</script>
-
+    stopBtn.addEventListener("click", () => {
+      recorder.stop();
+      recordBtn.disabled = false;
+      stopBtn.disabled = true;
+    });
   </script>
 </body>
 </html>
