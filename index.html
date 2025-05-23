@@ -88,6 +88,12 @@
 <body>
   <h1>🗣️ FluentBot</h1>
 
+<div style="margin-top: 1em;">
+  <button id="recordBtn">🎤 Start Recording</button>
+  <button id="stopBtn" disabled>⏹️ Stop</button>
+</div>
+
+
   <div id="chat-container"></div>
 
   <form id="chat-form">
@@ -145,6 +151,51 @@
       const audio = new Audio(`data:audio/mpeg;base64,${base64}`);
       audio.play();
     }
+<script>
+let recorder;
+let audioChunks = [];
+
+document.getElementById("recordBtn").addEventListener("click", async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recorder = new MediaRecorder(stream);
+  audioChunks = [];
+
+  recorder.ondataavailable = event => {
+    if (event.data.size > 0) {
+      audioChunks.push(event.data);
+    }
+  };
+
+  recorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: "audio/webm" });
+    const formData = new FormData();
+    formData.append("audio", blob);
+
+    const res = await fetch("/api/transcribe", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+    if (data.transcript) {
+      sendMessage(data.transcript); // Reuse your existing chat flow
+    } else {
+      alert("Transcription failed");
+    }
+  };
+
+  recorder.start();
+  document.getElementById("recordBtn").disabled = true;
+  document.getElementById("stopBtn").disabled = false;
+});
+
+document.getElementById("stopBtn").addEventListener("click", () => {
+  recorder.stop();
+  document.getElementById("recordBtn").disabled = false;
+  document.getElementById("stopBtn").disabled = true;
+});
+</script>
+
   </script>
 </body>
 </html>
