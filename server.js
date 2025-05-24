@@ -46,7 +46,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   file: {
     name: 'recording.webm',
     type: 'audio/webm',
-    data: fs.createReadStream(file.filepath),
+    data: fs.createReadStream(audioPath),
   },
   model: 'whisper-1',
   response_format: 'json',
