@@ -42,12 +42,17 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   }
 
   try {
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath),
-      model: 'whisper-1',
-      response_format: 'json',
-      language: 'es', // or 'en', adjust as needed
-    });
+   const transcription = await openai.audio.transcriptions.create({
+  file: {
+    name: 'recording.webm',
+    type: 'audio/webm',
+    data: fs.createReadStream(file.filepath),
+  },
+  model: 'whisper-1',
+  response_format: 'json',
+  language: 'es',
+});
+
 
     console.log('Transcription success:', transcription.text);
 
