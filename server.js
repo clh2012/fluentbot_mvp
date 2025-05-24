@@ -34,8 +34,10 @@ const openai = new OpenAI({
 // POST /api/transcribe – handles audio file upload and transcription
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   const audioPath = req.file?.path;
+  console.log('Received transcription request');
 
   if (!audioPath) {
+    console.error('No audio file uploaded.');
     return res.status(400).json({ error: 'No audio file uploaded.' });
   }
 
@@ -44,17 +46,20 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
       file: fs.createReadStream(audioPath),
       model: 'whisper-1',
       response_format: 'json',
-      // language: 'es', // Optional: set or remove as needed
+      language: 'es', // or 'en', adjust as needed
     });
 
-    fs.unlink(audioPath, () => {}); // Clean up the uploaded file
+    console.log('Transcription success:', transcription.text);
+
+    fs.unlink(audioPath, () => {}); // cleanup
 
     res.json({ transcript: transcription.text });
   } catch (error) {
-    console.error('Transcription error:', error.response?.data || error.message);
+    console.error('Transcription error:', error?.response?.data || error.message || error);
     res.status(500).json({ error: 'Transcription failed' });
   }
 });
+
 
 // POST /api/tts – generate speech audio from text using 11 Labs
 app.post('/api/tts', async (req, res) => {
