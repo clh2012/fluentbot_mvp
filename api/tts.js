@@ -7,7 +7,7 @@ export const config = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
-  const { text, voice = 'Rachel' } = req.body;
+  const { text, voice = 'Ir1QNHvhaJXbAGhT50w3' } = req.body;
 
   try {
     const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
