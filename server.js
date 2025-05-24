@@ -73,7 +73,7 @@ app.post('/api/tts', async (req, res) => {
     }
 
     // 11 Labs API details
-    const apiKey = process.env.LABS_API_KEY;
+    const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: '11 Labs API key is not configured.' });
     }
