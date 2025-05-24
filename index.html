@@ -58,6 +58,8 @@
   </div>
 
   <script>
+    const API_BASE = 'http://localhost:3000';
+
     let mediaRecorder;
     let audioChunks = [];
     let audioContext;
@@ -122,7 +124,7 @@
             formData.append('audio', blob, 'recording.webm');
 
             try {
-              const response = await fetch('/api/transcribe', {
+              const response = await fetch(`${API_BASE}/api/transcribe`, {
                 method: 'POST',
                 body: formData,
               });
@@ -165,10 +167,10 @@
       status.textContent = "Generating speech...";
 
       try {
-        const response = await fetch('/api/tts', {
+        const response = await fetch(`${API_BASE}/api/tts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: 'Rachel' }), // Optional: adjust voice
+          body: JSON.stringify({ text, voice: 'Rachel' }),
         });
 
         if (!response.ok) throw new Error('TTS request failed');
