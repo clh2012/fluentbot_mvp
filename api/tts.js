@@ -7,10 +7,12 @@ export const config = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
-  const { text, voice = 'Ir1QNHvhaJXbAGhT50w3' } = req.body;
+  const { text } = req.body;
+
+  const voice_id = 'Ir1QNHvhaJXbAGhT50w3'; // ← replace with your actual ElevenLabs voice ID
 
   try {
-    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
+    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
       method: 'POST',
       headers: {
         'xi-api-key': process.env.ELEVENLABS_API_KEY,
