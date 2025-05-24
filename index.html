@@ -1,214 +1,82 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FluentBot</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f9f9f9;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin: 0;
-      padding: 0;
-    }
+<div style="margin-top: 1em;">
+  <button id="recordBtn">🎤 Start Recording</button>
+  <p id="recordingStatus"></p>
+  <audio id="audioPlayback" controls style="display:none; margin-top:1em;"></audio>
+  <progress id="audioLevel" value="0" max="1" style="width: 100%; display: none; margin-top: 0.5em;"></progress>
+</div>
 
-    h1 {
-      margin-top: 1rem;
-      color: #333;
-    }
+<script>
+  let mediaRecorder;
+  let audioChunks = [];
+  let audioContext;
+  let analyser;
+  let dataArray;
+  let animationId;
 
-    #chat-container {
-      width: 90%;
-      max-width: 600px;
-      height: 70vh;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 1rem;
-      background-color: #fff;
-      overflow-y: auto;
-      margin-top: 1rem;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    }
+  const recordBtn = document.getElementById("recordBtn");
+  const status = document.getElementById("recordingStatus");
+  const audioPlayback = document.getElementById("audioPlayback");
+  const audioLevel = document.getElementById("audioLevel");
 
-    .message {
-      margin-bottom: 1rem;
-      padding: 0.6rem 1rem;
-      border-radius: 8px;
-      max-width: 80%;
-      word-wrap: break-word;
-    }
-
-    .message.user {
-      background-color: #e0f7fa;
-      align-self: flex-end;
-      text-align: right;
-      margin-left: auto;
-    }
-
-    .message.bot {
-      background-color: #f1f8e9;
-      align-self: flex-start;
-      text-align: left;
-      margin-right: auto;
-    }
-
-    #chat-form {
-      width: 90%;
-      max-width: 600px;
-      display: flex;
-      margin-top: 1rem;
-    }
-
-    #user-input {
-      flex: 1;
-      padding: 0.75rem;
-      border: 1px solid #ccc;
-      border-radius: 8px 0 0 8px;
-      font-size: 1rem;
-    }
-
-    button {
-      padding: 0.75rem 1.2rem;
-      border: none;
-      background-color: #007bff;
-      color: white;
-      border-radius: 0 8px 8px 0;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #0056b3;
-    }
-
-    .mic-buttons {
-      margin-top: 1em;
-    }
-
-    #recordingStatus {
-      margin-top: 0.5em;
-      font-weight: bold;
-    }
-  </style>
-</head>
-<body>
-  <h1>🗣️ FluentBot</h1>
-
-  <div id="chat-container"></div>
-
-  <form id="chat-form">
-    <input id="user-input" type="text" placeholder="Escribe algo..." autocomplete="off" />
-    <button type="submit">Enviar</button>
-  </form>
-
-  <div class="mic-buttons">
-    <button id="recordBtn">🎤 Start Recording</button>
-    <button id="stopBtn" disabled>⏹️ Stop</button>
-    <p id="recordingStatus">Ready</p>
-  </div>
-
-  <audio id="audioPlayback" controls style="display:none;"></audio>
-
-  <script>
-    const chatForm = document.getElementById("chat-form");
-    const userInput = document.getElementById("user-input");
-    const chatContainer = document.getElementById("chat-container");
-    const recordBtn = document.getElementById("recordBtn");
-    const stopBtn = document.getElementById("stopBtn");
-    const status = document.getElementById("recordingStatus");
-    const audioPlayback = document.getElementById("audioPlayback");
-
-    let recorder;
-    let audioChunks = [];
-
-    chatForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const message = userInput.value.trim();
-      if (!message) return;
-      sendMessage(message);
-      userInput.value = "";
-    });
-
-    function appendMessage(sender, text) {
-      const messageElem = document.createElement("div");
-      messageElem.className = `message ${sender}`;
-      messageElem.textContent = text;
-      chatContainer.appendChild(messageElem);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-
-    function playAudio(base64) {
-      const audio = new Audio(`data:audio/mpeg;base64,${base64}`);
-      audio.play();
-    }
-
-    async function sendMessage(message) {
-      appendMessage("user", message);
-      try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message }),
-        });
-        const data = await response.json();
-        if (data.reply) appendMessage("bot", data.reply);
-        if (data.audioBase64) playAudio(data.audioBase64);
-      } catch (error) {
-        console.error("Error:", error);
-        appendMessage("bot", "Lo siento, ha ocurrido un error.");
-      }
-    }
-
-    recordBtn.addEventListener("click", async () => {
+  recordBtn.addEventListener("click", async () => {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+      // Start recording
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recorder = new MediaRecorder(stream);
+
+      // Setup Audio Context for visual meter
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      source.connect(analyser);
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      dataArray = new Uint8Array(bufferLength);
+
+      audioLevel.style.display = "block";
+
+      // Function to update the progress bar based on audio volume
+      function updateMeter() {
+        analyser.getByteFrequencyData(dataArray);
+        // Calculate average volume
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / bufferLength / 255; // normalize 0-1
+        audioLevel.value = avg;
+        animationId = requestAnimationFrame(updateMeter);
+      }
+      updateMeter();
+
+      mediaRecorder = new MediaRecorder(stream);
       audioChunks = [];
 
-      recorder.ondataavailable = event => {
+      mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunks.push(event.data);
       };
 
-      recorder.onstop = async () => {
+      mediaRecorder.onstop = () => {
+        cancelAnimationFrame(animationId);
+        audioLevel.style.display = "none";
+        audioContext.close();
+
         const blob = new Blob(audioChunks, { type: "audio/webm" });
-        const formData = new FormData();
-        formData.append("audio", blob);
+        const audioURL = URL.createObjectURL(blob);
+        audioPlayback.src = audioURL;
+        audioPlayback.style.display = "block";
+        status.textContent = "Recording complete.";
 
-        status.textContent = "Transcribing...";
-        try {
-          const res = await fetch("/api/transcribe", {
-            method: "POST",
-            body: formData
-          });
-
-          const data = await res.json();
-          if (data.transcript) {
-            sendMessage(data.transcript);
-            status.textContent = "✅ Transcribed";
-          } else {
-            status.textContent = "⚠️ Transcription failed";
-          }
-        } catch (err) {
-          console.error(err);
-          status.textContent = "⚠️ Error";
-        }
+        // Here you can send 'blob' to your backend for transcription
       };
 
-      recorder.start();
-      recordBtn.disabled = true;
-      stopBtn.disabled = false;
-      status.textContent = "🎙️ Recording...";
-    });
-
-    stopBtn.addEventListener("click", () => {
-      recorder.stop();
-      recordBtn.disabled = false;
-      stopBtn.disabled = true;
-    });
-  </script>
-</body>
-</html>
+      mediaRecorder.start();
+      recordBtn.textContent = "🛑 Stop Recording";
+      status.textContent = "Recording...";
+    } else if (mediaRecorder.state === "recording") {
+      // Stop recording
+      mediaRecorder.stop();
+      recordBtn.textContent = "🎤 Start Recording";
+      status.textContent = "Processing audio...";
+    }
+  });
+</script>
