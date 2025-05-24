@@ -1,0 +1,28 @@
+{
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "multer": "^2.0.0",
+    "openai": "^4.103.0"
+  },
+  "name": "fluentbot_mvp",
+  "version": "1.0.0",
+  "description": "A minimal voice-enabled Spanish conversation bot powered by OpenRouter and deployed on Vercel.",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clh2012/fluentbot_mvp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/clh2012/fluentbot_mvp/issues"
+  },
+  "homepage": "https://github.com/clh2012/fluentbot_mvp#readme"
+}

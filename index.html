@@ -1,160 +1,191 @@
-<div style="margin-top: 1em;">
-  <button id="recordBtn">🎤 Start Recording</button>
-  <p id="recordingStatus"></p>
-  <audio id="audioPlayback" controls style="display:none; margin-top:1em;"></audio>
-  <progress id="audioLevel" value="0" max="1" style="width: 100%; display: none; margin-top: 0.5em;"></progress>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fluent Hero – Audio Practice</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 2em auto;
+      padding: 1em;
+      background: #f9f9f9;
+      color: #333;
+      line-height: 1.6;
+    }
+    button {
+      padding: 0.5em 1em;
+      font-size: 1rem;
+      border: none;
+      background: #007bff;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    textarea {
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 0.5em;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      resize: vertical;
+    }
+    audio {
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
 
-  <!-- Transcript text box -->
-  <textarea id="transcriptBox" rows="6" style="width:100%; margin-top: 1em;" placeholder="Transcript will appear here..." readonly></textarea>
+  <h1>🎧 Fluent Hero – Audio Practice</h1>
 
-  <!-- Dialogue container -->
-  <div id="dialogue" style="margin-top: 1em; border: 1px solid #ccc; padding: 1em; max-height: 300px; overflow-y: auto;">
-    <h3>Conversation</h3>
-    <!-- Each message will be appended here -->
+  <div style="margin-top: 1em;">
+    <button id="recordBtn">🎤 Start Recording</button>
+    <p id="recordingStatus"></p>
+    <progress id="audioLevel" value="0" max="1" style="width: 100%; display: none; margin-top: 0.5em;"></progress>
+
+    <audio id="audioPlayback" controls style="display:none; margin-top:1em;"></audio>
+
+    <textarea id="transcript" rows="5" style="width: 100%; margin-top:1em;" placeholder="Transcription will appear here..."></textarea>
+
+    <button id="speakBtn" style="margin-top: 0.5em;">🔈 Speak Text</button>
+
+    <audio id="ttsAudio" controls style="display:none; margin-top:1em;"></audio>
   </div>
 
-  <!-- 11 Labs playback button -->
-  <button id="playVoiceBtn" style="margin-top: 1em; display:none;">🔊 Play Voice</button>
-</div>
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let animationId;
 
-<script>
-  let mediaRecorder;
-  let audioChunks = [];
-  let audioContext;
-  let analyser;
-  let dataArray;
-  let animationId;
+    const recordBtn = document.getElementById("recordBtn");
+    const status = document.getElementById("recordingStatus");
+    const audioPlayback = document.getElementById("audioPlayback");
+    const audioLevel = document.getElementById("audioLevel");
+    const transcriptEl = document.getElementById("transcript");
+    const speakBtn = document.getElementById("speakBtn");
+    const ttsAudio = document.getElementById("ttsAudio");
 
-  const recordBtn = document.getElementById("recordBtn");
-  const status = document.getElementById("recordingStatus");
-  const audioPlayback = document.getElementById("audioPlayback");
-  const audioLevel = document.getElementById("audioLevel");
-  const transcriptBox = document.getElementById("transcriptBox");
-  const dialogue = document.getElementById("dialogue");
-  const playVoiceBtn = document.getElementById("playVoiceBtn");
-
-  let lastTranscript = "";
-
-  recordBtn.addEventListener("click", async () => {
-    if (!mediaRecorder || mediaRecorder.state === "inactive") {
-      // Start recording
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-      analyser = audioContext.createAnalyser();
-      source.connect(analyser);
-      analyser.fftSize = 256;
-      const bufferLength = analyser.frequencyBinCount;
-      dataArray = new Uint8Array(bufferLength);
-
-      audioLevel.style.display = "block";
-
-      function updateMeter() {
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / bufferLength / 255;
-        audioLevel.value = avg;
-        animationId = requestAnimationFrame(updateMeter);
-      }
-      updateMeter();
-
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunks.push(event.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        cancelAnimationFrame(animationId);
-        audioLevel.style.display = "none";
-        audioContext.close();
-
-        const blob = new Blob(audioChunks, { type: "audio/webm" });
-        const audioURL = URL.createObjectURL(blob);
-        audioPlayback.src = audioURL;
-        audioPlayback.style.display = "block";
-        status.textContent = "Recording complete.";
-
-        // Send the audio blob to your backend to get transcript
+    recordBtn.addEventListener("click", async () => {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
         try {
-          status.textContent = "Transcribing...";
-          const formData = new FormData();
-          formData.append("audio", blob, "recording.webm");
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-          const response = await fetch("/api/transcribe", {
-            method: "POST",
-            body: formData,
-          });
+          audioContext = new AudioContext();
+          const source = audioContext.createMediaStreamSource(stream);
+          analyser = audioContext.createAnalyser();
+          source.connect(analyser);
+          analyser.fftSize = 256;
+          const bufferLength = analyser.frequencyBinCount;
+          dataArray = new Uint8Array(bufferLength);
 
-          if (!response.ok) throw new Error("Transcription failed");
+          audioLevel.style.display = "block";
 
-          const data = await response.json();
-          transcriptBox.value = data.transcript || "[No transcript returned]";
-          status.textContent = "Transcription complete.";
+          function updateMeter() {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength / 255;
+            audioLevel.value = avg;
+            animationId = requestAnimationFrame(updateMeter);
+          }
+          updateMeter();
 
-          // Append transcript to dialogue
-          appendDialogue("User", data.transcript);
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
 
-          // Enable the play voice button for 11 Labs TTS
-          playVoiceBtn.style.display = "inline-block";
-          lastTranscript = data.transcript;
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            cancelAnimationFrame(animationId);
+            audioLevel.style.display = "none";
+            audioContext.close();
+
+            const blob = new Blob(audioChunks, { type: "audio/webm" });
+            const audioURL = URL.createObjectURL(blob);
+            audioPlayback.src = audioURL;
+            audioPlayback.style.display = "block";
+            status.textContent = "Recording complete. Transcribing...";
+
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
+
+            try {
+              const response = await fetch('/api/transcribe', {
+                method: 'POST',
+                body: formData,
+              });
+
+              if (!response.ok) throw new Error('Transcription failed');
+
+              const data = await response.json();
+              transcriptEl.value = data.transcript || '';
+              status.textContent = "Transcription complete.";
+            } catch (err) {
+              status.textContent = "Error during transcription.";
+              console.error(err);
+            }
+          };
+
+          mediaRecorder.start();
+          recordBtn.textContent = "🛑 Stop Recording";
+          status.textContent = "Recording...";
+          transcriptEl.value = "";
+          ttsAudio.style.display = "none";
+          ttsAudio.src = "";
         } catch (err) {
-          console.error(err);
-          status.textContent = "Error during transcription.";
+          console.error('Could not start recording:', err);
+          status.textContent = 'Could not start recording. Please check microphone permissions.';
         }
-      };
+      } else if (mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        recordBtn.textContent = "🎤 Start Recording";
+        status.textContent = "Processing audio...";
+      }
+    });
 
-      mediaRecorder.start();
-      recordBtn.textContent = "🛑 Stop Recording";
-      status.textContent = "Recording...";
-    } else if (mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-      recordBtn.textContent = "🎤 Start Recording";
-      status.textContent = "Processing audio...";
-    }
-  });
+    speakBtn.addEventListener('click', async () => {
+      const text = transcriptEl.value.trim();
+      if (!text) {
+        alert('Please enter or record some text to speak.');
+        return;
+      }
 
-  // Append message to dialogue container
-  function appendDialogue(speaker, text) {
-    if (!text) return;
-    const message = document.createElement("p");
-    message.innerHTML = `<strong>${speaker}:</strong> ${text}`;
-    dialogue.appendChild(message);
-    dialogue.scrollTop = dialogue.scrollHeight; // auto scroll down
-  }
+      status.textContent = "Generating speech...";
 
-  // 11 Labs TTS voice playback example
-  playVoiceBtn.addEventListener("click", async () => {
-    if (!lastTranscript) return;
+      try {
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice: 'Rachel' }), // Optional: adjust voice
+        });
 
-    status.textContent = "Generating voice...";
-    try {
-      // Call your 11 Labs TTS backend endpoint here, e.g., /api/tts
-      const response = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: lastTranscript }),
-      });
+        if (!response.ok) throw new Error('TTS request failed');
 
-      if (!response.ok) throw new Error("TTS generation failed");
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        ttsAudio.src = audioUrl;
+        ttsAudio.style.display = 'block';
+        ttsAudio.play();
 
-      const data = await response.json();
-      // data.audioUrl should be URL of generated voice audio
+        status.textContent = "Playing synthesized speech.";
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Error during speech synthesis.";
+      }
+    });
+  </script>
 
-      audioPlayback.src = data.audioUrl;
-      audioPlayback.style.display = "block";
-      audioPlayback.play();
-
-      appendDialogue("Bot", lastTranscript);
-      status.textContent = "Voice playback ready.";
-    } catch (err) {
-      console.error(err);
-      status.textContent = "Error generating voice.";
-    }
-  });
-</script>
+</body>
+</html>
