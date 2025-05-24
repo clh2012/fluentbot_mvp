@@ -2,10 +2,14 @@
   "version": 2,
   "builds": [
     { "src": "api/chat.js", "use": "@vercel/node" },
+    { "src": "api/transcribe.js", "use": "@vercel/node" },
+    { "src": "api/tts.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/chat", "dest": "api/chat.js" },
+    { "src": "/api/transcribe", "dest": "api/transcribe.js" },
+    { "src": "/api/tts", "dest": "api/tts.js" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
