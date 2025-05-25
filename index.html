@@ -2,218 +2,178 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fluent Hero – Audio Practice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fluent Hero Voice Chat</title>
   <style>
     body {
       font-family: sans-serif;
-      max-width: 600px;
-      margin: 2em auto;
-      padding: 1em;
-      background: #f9f9f9;
-      color: #333;
-      line-height: 1.6;
+      padding: 2em;
+      background: #f4f4f4;
     }
+
     button {
-      padding: 0.5em 1em;
-      font-size: 1rem;
-      border: none;
+      padding: 0.7em 1.2em;
+      margin-right: 1em;
+      font-size: 1em;
+    }
+
+    #chatLog {
+      border: 1px solid #ccc;
+      background: white;
+      padding: 1em;
+      max-height: 300px;
+      overflow-y: auto;
+      border-radius: 10px;
+      margin-top: 1em;
+    }
+
+    .bubble {
+      padding: 0.6em 1em;
+      margin: 0.5em 0;
+      border-radius: 20px;
+      max-width: 80%;
+      clear: both;
+    }
+
+    .user {
       background: #007bff;
       color: white;
-      border-radius: 5px;
-      cursor: pointer;
+      float: right;
     }
-    button:hover {
-      background: #0056b3;
+
+    .assistant {
+      background: #e4e6eb;
+      color: black;
+      float: left;
     }
-    textarea {
-      font-family: inherit;
-      font-size: 1rem;
+
+    #transcript {
+      width: 100%;
+      margin-top: 1em;
       padding: 0.5em;
       border-radius: 5px;
       border: 1px solid #ccc;
-      resize: vertical;
-    }
-    audio {
-      width: 100%;
+      font-size: 1em;
     }
   </style>
 </head>
 <body>
+  <h2>Fluent Hero Spanish Voice Chat</h2>
 
-  <h1>🎧 Fluent Hero – Audio Practice</h1>
+  <button id="recordBtn">Start Recording</button>
+  <button id="speakBtn">Play Transcript</button>
 
-  <div style="margin-top: 1em;">
-    <button id="recordBtn">🎤 Start Recording</button>
-    <p id="recordingStatus"></p>
-    <progress id="audioLevel" value="0" max="1" style="width: 100%; display: none; margin-top: 0.5em;"></progress>
+  <textarea id="transcript" rows="3" placeholder="Transcript will appear here..."></textarea>
 
-    <audio id="audioPlayback" controls style="display:none; margin-top:1em;"></audio>
-
-    <textarea id="transcript" rows="5" style="width: 100%; margin-top:1em;" placeholder="Transcription will appear here..."></textarea>
-
-    <button id="speakBtn" style="margin-top: 0.5em;">🔈 Speak Text</button>
-
-    <audio id="ttsAudio" controls style="display:none; margin-top:1em;"></audio>
-  </div>
+  <div id="chatLog"></div>
 
   <script>
-    const API_BASE = 'https://fluentbot-mvp-am46.vercel.app/';
+    const API_BASE = "http://localhost:3000"; // change if hosted elsewhere
+
+    const recordBtn = document.getElementById("recordBtn");
+    const speakBtn = document.getElementById("speakBtn");
+    const transcriptEl = document.getElementById("transcript");
 
     let mediaRecorder;
     let audioChunks = [];
-    let audioContext;
-    let analyser;
-    let dataArray;
-    let animationId;
 
-    const recordBtn = document.getElementById("recordBtn");
-    const status = document.getElementById("recordingStatus");
-    const audioPlayback = document.getElementById("audioPlayback");
-    const audioLevel = document.getElementById("audioLevel");
-    const transcriptEl = document.getElementById("transcript");
-    const speakBtn = document.getElementById("speakBtn");
-    const ttsAudio = document.getElementById("ttsAudio");
+    recordBtn.onclick = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
 
-    recordBtn.addEventListener("click", async () => {
-      if (!mediaRecorder || mediaRecorder.state === "inactive") {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
 
-          audioContext = new AudioContext();
-          const source = audioContext.createMediaStreamSource(stream);
-          analyser = audioContext.createAnalyser();
-          source.connect(analyser);
-          analyser.fftSize = 256;
-          const bufferLength = analyser.frequencyBinCount;
-          dataArray = new Uint8Array(bufferLength);
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        const formData = new FormData();
+        formData.append("audio", audioBlob);
 
-          audioLevel.style.display = "block";
-
-          function updateMeter() {
-            analyser.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < bufferLength; i++) {
-              sum += dataArray[i];
-            }
-            const avg = sum / bufferLength / 255;
-            audioLevel.value = avg;
-            animationId = requestAnimationFrame(updateMeter);
-          }
-          updateMeter();
-
-          mediaRecorder = new MediaRecorder(stream);
-          audioChunks = [];
-
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) audioChunks.push(event.data);
-          };
-
-          mediaRecorder.onstop = async () => {
-            cancelAnimationFrame(animationId);
-            audioLevel.style.display = "none";
-            audioContext.close();
-
-            const blob = new Blob(audioChunks, { type: "audio/webm" });
-            const audioURL = URL.createObjectURL(blob);
-            audioPlayback.src = audioURL;
-            audioPlayback.style.display = "block";
-            status.textContent = "Recording complete. Transcribing...";
-
-            const formData = new FormData();
-            formData.append('audio', blob, 'recording.webm');
-
-            try {
-              const response = await fetch(`${API_BASE}/api/transcribe`, {
-                method: 'POST',
-                body: formData,
-              });
-
-              if (!response.ok) throw new Error('Transcription failed');
-
-              const data = await response.json();
-              transcriptEl.value = data.transcript || '';
-              status.textContent = "Transcription complete.";
-            } catch (err) {
-              status.textContent = "Error during transcription.";
-              console.error(err);
-            }
-          };
-
-          mediaRecorder.start();
-          recordBtn.textContent = "🛑 Stop Recording";
-          status.textContent = "Recording...";
-          transcriptEl.value = "";
-          ttsAudio.style.display = "none";
-          ttsAudio.src = "";
-        } catch (err) {
-          console.error('Could not start recording:', err);
-          status.textContent = 'Could not start recording. Please check microphone permissions.';
-        }
-      } else if (mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-        recordBtn.textContent = "🎤 Start Recording";
-        status.textContent = "Processing audio...";
-      }
-    });
-
-    speakBtn.addEventListener('click', async () => {
-      const text = transcriptEl.value.trim();
-      if (!text) {
-        alert('Please enter or record some text to speak.');
-        return;
-      }
-
-      status.textContent = "Generating speech...";
-
-      try {
-        const response = await fetch(`${API_BASE}/api/tts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: 'Ir1QNHvhaJXbAGhT50w3' }),
+        const res = await fetch(`${API_BASE}/api/transcribe`, {
+          method: "POST",
+          body: formData,
         });
 
-        if (!response.ok) throw new Error('TTS request failed');
+        const data = await res.json();
+        const transcript = data.transcript;
+        transcriptEl.value = transcript;
 
-        const audioBlob = await response.blob();
+        await sendToChat({ message: transcript });
+      };
+
+      mediaRecorder.start();
+      recordBtn.textContent = "Recording... (click to stop)";
+      recordBtn.onclick = () => {
+        mediaRecorder.stop();
+        recordBtn.textContent = "Start Recording";
+        recordBtn.onclick = recordStart;
+      };
+    };
+
+    const recordStart = recordBtn.onclick;
+
+    speakBtn.onclick = async () => {
+      const res = await fetch(`${API_BASE}/api/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: transcriptEl.value }),
+      });
+
+      const data = await res.json();
+      if (data.audioBase64) {
+        const audioBlob = new Blob(
+          [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
+          { type: "audio/mpeg" }
+        );
         const audioUrl = URL.createObjectURL(audioBlob);
-        ttsAudio.src = audioUrl;
-        ttsAudio.style.display = 'block';
-        ttsAudio.play();
-
-        status.textContent = "Playing synthesized speech.";
-      } catch (err) {
-        console.error(err);
-        status.textContent = "Error during speech synthesis.";
+        const audio = new Audio(audioUrl);
+        audio.play();
       }
-    });
-  </script>
-<script>
-  async function sendToChat(body) {
-    if (body.message) addMessage(body.message, 'user');
+    };
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    const data = await res.json();
-
-    if (data.reply) {
-      addMessage(data.reply, 'assistant');
-
-      const audioReplyBlob = new Blob(
-        [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
-        { type: 'audio/mpeg' }
-      );
-      const audioUrl = URL.createObjectURL(audioReplyBlob);
-      const audio = new Audio(audioUrl);
-      audio.play();
-    } else {
-      addMessage("⚠️ Error: No reply received", 'assistant');
+    function addMessage(text, role) {
+      const chatLog = document.getElementById("chatLog");
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${role}`;
+      bubble.textContent = text;
+      chatLog.appendChild(bubble);
+      chatLog.scrollTop = chatLog.scrollHeight;
     }
-  }
-</script>
+
+    async function sendToChat(body) {
+      if (body.message) {
+        addMessage(body.message, 'user');
+      }
+
+      const res = await fetch(`${API_BASE}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      if (data.reply) {
+        addMessage(data.reply, 'assistant');
+
+        if (data.audioBase64) {
+          const audioBlob = new Blob(
+            [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
+            { type: "audio/mpeg" }
+          );
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          audio.play();
+          audio.onended = () => {
+            recordBtn.click(); // Auto-loop: record next user input
+          };
+        }
+      } else {
+        addMessage("⚠️ No response from assistant", 'assistant');
+      }
+    }
+  </script>
 </body>
 </html>
