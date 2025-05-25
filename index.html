@@ -188,6 +188,32 @@
       }
     });
   </script>
+<script>
+  async function sendToChat(body) {
+    if (body.message) addMessage(body.message, 'user');
 
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (data.reply) {
+      addMessage(data.reply, 'assistant');
+
+      const audioReplyBlob = new Blob(
+        [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
+        { type: 'audio/mpeg' }
+      );
+      const audioUrl = URL.createObjectURL(audioReplyBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } else {
+      addMessage("⚠️ Error: No reply received", 'assistant');
+    }
+  }
+</script>
 </body>
 </html>
