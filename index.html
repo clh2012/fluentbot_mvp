@@ -120,8 +120,24 @@
             audioPlayback.style.display = "block";
             status.textContent = "Recording complete. Transcribing...";
 
-            const formData = new FormData();
-            formData.append('audio', blob, 'recording.webm');
+           const reader = new FileReader();
+reader.onloadend = async () => {
+  const base64 = reader.result.split(',')[1]; // strip the data URL prefix
+  const response = await fetch(`${API_BASE}/api/transcribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioBase64: base64 })
+  });
+
+  if (!response.ok) throw new Error('Transcription failed');
+
+  const data = await response.json();
+  transcriptEl.value = data.transcript || '';
+  status.textContent = "Transcription complete.";
+};
+
+reader.readAsDataURL(blob);
+
 
             try {
               const response = await fetch(`${API_BASE}/api/transcribe`, {
