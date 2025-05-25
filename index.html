@@ -2,139 +2,178 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>FluentBot - Spanish Conversation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FluentBot</title>
   <style>
     body {
-      font-family: sans-serif;
-      padding: 2em;
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #conversation {
+      width: 90%;
       max-width: 600px;
-      margin: auto;
-    }
-    button {
-      font-size: 1em;
-      padding: 0.5em 1em;
-      margin-top: 1em;
-    }
-    #chat {
-      margin-top: 2em;
-      background: #f9f9f9;
-      padding: 1em;
-      border-radius: 8px;
-      height: 300px;
+      margin-top: 2rem;
+      padding: 1rem;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      height: 60vh;
       overflow-y: auto;
+      display: flex;
+      flex-direction: column;
     }
     .message {
-      margin-bottom: 1em;
+      display: flex;
+      margin: 0.5rem 0;
+      align-items: flex-end;
     }
-    .user {
-      text-align: right;
-      font-weight: bold;
-      color: #0070f3;
+    .message.user {
+      justify-content: flex-end;
     }
-    .assistant {
-      text-align: left;
-      color: #333;
+    .message.bot {
+      justify-content: flex-start;
     }
-    #textInput {
-      width: 100%;
-      font-size: 1em;
-      padding: 0.5em;
-      margin-top: 1em;
+    .bubble {
+      max-width: 75%;
+      padding: 0.75rem 1rem;
+      border-radius: 20px;
+      margin: 0 0.5rem;
+      line-height: 1.4;
+    }
+    .bubble.user {
+      background: #d1e7dd;
+      color: #0f5132;
+      border-bottom-right-radius: 0;
+    }
+    .bubble.bot {
+      background: #e7f1ff;
+      color: #084298;
+      border-bottom-left-radius: 0;
+    }
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-size: cover;
+    }
+    .avatar.user {
+      background-image: url('https://api.dicebear.com/7.x/thumbs/svg?seed=User');
+    }
+    .avatar.bot {
+      background-image: url('https://api.dicebear.com/7.x/thumbs/svg?seed=Bot');
+    }
+    #controls {
+      margin-top: 1rem;
+    }
+    button, input {
+      font-size: 1rem;
+      padding: 0.5rem;
+      margin: 0.25rem;
     }
   </style>
 </head>
 <body>
-  <h1>🎤 Speak or Type to Your Spanish Partner</h1>
-
-  <button id="recordBtn">🎙️ Start Recording</button>
-  <input type="text" id="textInput" placeholder="Or type your message in Spanish..." />
-
-  <div id="chat"></div>
+  <h1>FluentBot</h1>
+  <div id="conversation"></div>
+  <div id="controls">
+    <input type="text" id="textInput" placeholder="Type a message" />
+    <button id="sendBtn">Send</button>
+    <button id="recordBtn">🎙️</button>
+  </div>
 
   <script>
+    const conversation = document.getElementById('conversation');
+    const sendBtn = document.getElementById('sendBtn');
     const recordBtn = document.getElementById('recordBtn');
     const textInput = document.getElementById('textInput');
-    const chatDiv = document.getElementById('chat');
 
-    let mediaRecorder;
-    let audioChunks = [];
+    function addMessage(text, sender) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `message ${sender}`;
+      const avatar = document.createElement('div');
+      avatar.className = `avatar ${sender}`;
+      const bubble = document.createElement('div');
+      bubble.className = `bubble ${sender}`;
+      bubble.textContent = text;
+      msgDiv.appendChild(sender === 'bot' ? avatar : bubble);
+      msgDiv.appendChild(sender === 'bot' ? bubble : avatar);
+      conversation.appendChild(msgDiv);
+      conversation.scrollTop = conversation.scrollHeight;
+    }
 
-    // Voice recording
-    recordBtn.addEventListener('click', async () => {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-        recordBtn.textContent = '🎙️ Start Recording';
-        return;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-
-      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        audioChunks = [];
-        const audioBase64 = await blobToBase64(audioBlob);
-        await sendToChat({ audioBase64 });
-      };
-
-      mediaRecorder.start();
-      recordBtn.textContent = '⏹️ Stop Recording';
-    });
-
-    // Text input
-    textInput.addEventListener('keypress', async (e) => {
-      if (e.key === 'Enter' && textInput.value.trim()) {
-        const message = textInput.value.trim();
-        textInput.value = '';
-        await sendToChat({ message });
-      }
-    });
-
-    async function sendToChat(body) {
-      if (body.message) addMessage(body.message, 'user');
+    async function sendMessage(text) {
+      addMessage(text, 'user');
 
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ message: text })
       });
 
       const data = await res.json();
+      addMessage(data.reply, 'bot');
 
-      if (data.reply) {
-        addMessage(data.reply, 'assistant');
+      const audio = new Audio('data:audio/mpeg;base64,' + data.audioBase64);
+      audio.play();
+    }
 
-        const audioReplyBlob = new Blob(
-          [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
-          { type: 'audio/mpeg' }
-        );
-        const audioUrl = URL.createObjectURL(audioReplyBlob);
-        const audio = new Audio(audioUrl);
-        audio.play();
-      } else {
-        addMessage("⚠️ Error: No reply received", 'assistant');
+    sendBtn.onclick = () => {
+      const text = textInput.value;
+      if (text.trim()) {
+        sendMessage(text);
+        textInput.value = '';
       }
-    }
+    };
 
-    function addMessage(text, role) {
-      const msg = document.createElement('div');
-      msg.className = 'message ' + role;
-      msg.textContent = text;
-      chatDiv.appendChild(msg);
-      chatDiv.scrollTop = chatDiv.scrollHeight;
-    }
+    textInput.addEventListener("keypress", function(event) {
+      if (event.key === "Enter") {
+        sendBtn.click();
+      }
+    });
 
-    function blobToBase64(blob) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    }
+    // Recording logic
+    let mediaRecorder;
+    let audioChunks = [];
+
+    recordBtn.onclick = async () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎙️';
+      } else {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          audioChunks = [];
+
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const base64Audio = reader.result.split(',')[1];
+            const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audioBase64 })
+            });
+            const data = await res.json();
+            addMessage(data.reply, 'bot');
+            const audio = new Audio('data:audio/mpeg;base64,' + data.audioBase64);
+            audio.play();
+          };
+          reader.readAsDataURL(audioBlob);
+        };
+
+        mediaRecorder.start();
+        recordBtn.textContent = '⏹️';
+      }
+    };
   </script>
 </body>
 </html>
