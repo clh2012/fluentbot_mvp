@@ -120,24 +120,8 @@
             audioPlayback.style.display = "block";
             status.textContent = "Recording complete. Transcribing...";
 
-           const reader = new FileReader();
-reader.onloadend = async () => {
-  const base64 = reader.result.split(',')[1]; // strip the data URL prefix
-  const response = await fetch(`${API_BASE}/api/transcribe`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audioBase64: base64 })
-  });
-
-  if (!response.ok) throw new Error('Transcription failed');
-
-  const data = await response.json();
-  transcriptEl.value = data.transcript || '';
-  status.textContent = "Transcription complete.";
-};
-
-reader.readAsDataURL(blob);
-
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
 
             try {
               const response = await fetch(`${API_BASE}/api/transcribe`, {
@@ -186,7 +170,7 @@ reader.readAsDataURL(blob);
         const response = await fetch(`${API_BASE}/api/tts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: 'Ir1QNHvhaJXbAGhT50w3' }),
+          body: JSON.stringify({ text, voice: 'Rachel' }),
         });
 
         if (!response.ok) throw new Error('TTS request failed');
@@ -204,34 +188,6 @@ reader.readAsDataURL(blob);
       }
     });
   </script>
-<script>
-  async function sendToChat(body) {
-    if (body.message) addMessage(body.message, 'user');
-
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    const data = await res.json();
-
-    if (data.reply) {
-      addMessage(data.reply, 'assistant');
-
-      const audioReplyBlob = new Blob(
-        [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
-        { type: 'audio/mpeg' }
-      );
-      const audioUrl = URL.createObjectURL(audioReplyBlob);
-      const audio = new Audio(audioUrl);
-      audio.play();
-    } else {
-      addMessage("⚠️ Error: No reply received", 'assistant');
-    }
-  }
-</script>
-
 
 </body>
 </html>
