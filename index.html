@@ -170,7 +170,7 @@
         const response = await fetch(`${API_BASE}/api/tts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: 'Rachel' }),
+          body: JSON.stringify({ text, voice: 'Ir1QNHvhaJXbAGhT50w3' }),
         });
 
         if (!response.ok) throw new Error('TTS request failed');
@@ -188,6 +188,34 @@
       }
     });
   </script>
+<script>
+  async function sendToChat(body) {
+    if (body.message) addMessage(body.message, 'user');
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (data.reply) {
+      addMessage(data.reply, 'assistant');
+
+      const audioReplyBlob = new Blob(
+        [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
+        { type: 'audio/mpeg' }
+      );
+      const audioUrl = URL.createObjectURL(audioReplyBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } else {
+      addMessage("⚠️ Error: No reply received", 'assistant');
+    }
+  }
+</script>
+
 
 </body>
 </html>
