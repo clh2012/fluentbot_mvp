@@ -2,265 +2,166 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Fluent Hero Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fluent Hero – Audio Practice</title>
   <style>
     body {
       font-family: sans-serif;
-      background: #f2f2f2;
-      padding: 2em;
       max-width: 600px;
-      margin: auto;
+      margin: 2em auto;
+      padding: 1em;
+      background: #f9f9f9;
+      color: #333;
+      line-height: 1.6;
     }
-
-    h1, h2 {
-      text-align: center;
-    }
-
-    textarea {
-      width: 100%;
-      height: 4em;
-      font-size: 1em;
-      margin-top: 0.5em;
-    }
-
     button {
       padding: 0.5em 1em;
-      font-size: 1em;
-      margin: 0.5em 0.25em;
-      border-radius: 5px;
+      font-size: 1rem;
       border: none;
       background: #007bff;
       color: white;
+      border-radius: 5px;
       cursor: pointer;
     }
-
     button:hover {
       background: #0056b3;
     }
-
+    textarea {
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 0.5em;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      resize: vertical;
+    }
     audio {
-      display: block;
-      margin-top: 1em;
+      width: 100%;
     }
-
-    #audioLevel {
-      height: 10px;
-      background: #007bff;
-      width: 0%;
-      margin: 1em 0;
+    #chatContainer {
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 1em;
+      margin-top: 2em;
+      max-height: 300px;
+      overflow-y: auto;
     }
-
     .bubble {
-      max-width: 80%;
       margin: 0.5em 0;
       padding: 0.6em 1em;
       border-radius: 15px;
+      max-width: 80%;
       line-height: 1.4;
       word-wrap: break-word;
-      font-size: 1rem;
     }
-
     .user {
-      background-color: #007bff;
+      background: #007bff;
       color: white;
       margin-left: auto;
       text-align: right;
       border-bottom-right-radius: 0;
     }
-
     .assistant {
-      background-color: #e5e5ea;
+      background: #e5e5ea;
       color: #333;
       margin-right: auto;
       text-align: left;
       border-bottom-left-radius: 0;
     }
-
-    #chatContainer {
-      border: 1px solid #ccc;
-      padding: 1em;
-      height: 300px;
-      overflow-y: auto;
-      background: #fff;
-      border-radius: 5px;
-    }
-
-    #status {
-      font-style: italic;
-      margin-top: 1em;
-    }
   </style>
 </head>
 <body>
 
-<h1>Fluent Hero Voice Chat</h1>
+  <h1>🎧 Fluent Hero – Audio Practice</h1>
 
-<button id="recordBtn">🎙️ Record</button>
-<button id="speakBtn">🗣️ Speak Text</button>
-<div id="audioLevel"></div>
-<audio id="audioPlayback" controls style="display:none;"></audio>
+  <div style="margin-top: 1em;">
+    <button id="recordBtn">🎤 Start Recording</button>
+    <p id="recordingStatus"></p>
+    <progress id="audioLevel" value="0" max="1" style="width: 100%; display: none; margin-top: 0.5em;"></progress>
 
-<h2>Transcript</h2>
-<textarea id="transcript" placeholder="Transcribed text appears here..."></textarea>
+    <audio id="audioPlayback" controls style="display:none; margin-top:1em;"></audio>
 
-<h2>Conversation</h2>
-<div id="chatContainer"></div>
+    <textarea id="transcript" rows="5" style="width: 100%; margin-top:1em;" placeholder="Transcription will appear here..."></textarea>
 
-<div id="status"></div>
+    <button id="speakBtn" style="margin-top: 0.5em;">🔈 Speak Text</button>
 
-<script>
-const API_BASE = 'http://localhost:3000'; // Change this if deployed elsewhere
+    <audio id="ttsAudio" controls style="display:none; margin-top:1em;"></audio>
+  </div>
 
-const recordBtn = document.getElementById('recordBtn');
-const speakBtn = document.getElementById('speakBtn');
-const audioLevel = document.getElementById('audioLevel');
-const transcriptEl = document.getElementById('transcript');
-const audioPlayback = document.getElementById('audioPlayback');
-const chatContainer = document.getElementById('chatContainer');
-const status = document.getElementById('status');
+  <!-- Chat container added -->
+  <div id="chatContainer"></div>
 
-let mediaRecorder;
-let audioChunks = [];
-let animationId;
-let audioContext, analyser, source;
+  <script>
+    const API_BASE = 'https://fluentbot-mvp-am46.vercel.app/';
 
-recordBtn.addEventListener('click', async () => {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    recordBtn.textContent = "🎙️ Record";
-    return;
-  }
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioContext;
+    let analyser;
+    let animationId;
 
-  audioChunks = [];
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    const recordBtn = document.getElementById("recordBtn");
+    const status = document.getElementById("recordingStatus");
+    const audioPlayback = document.getElementById("audioPlayback");
+    const audioLevel = document.getElementById("audioLevel");
+    const transcriptEl = document.getElementById("transcript");
+    const speakBtn = document.getElementById("speakBtn");
+    const ttsAudio = document.getElementById("ttsAudio");
+    const chatContainer = document.getElementById("chatContainer");
 
-  audioContext = new AudioContext();
-  source = audioContext.createMediaStreamSource(stream);
-  analyser = audioContext.createAnalyser();
-  source.connect(analyser);
+    recordBtn.addEventListener("click", async () => {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioChunks = [];
 
-  const bufferLength = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
-  function draw() {
-    analyser.getByteFrequencyData(dataArray);
-    const volume = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
-    audioLevel.style.width = `${volume}%`;
-    animationId = requestAnimationFrame(draw);
-  }
+          audioContext = new AudioContext();
+          const source = audioContext.createMediaStreamSource(stream);
+          analyser = audioContext.createAnalyser();
+          source.connect(analyser);
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
 
-  draw();
-  audioLevel.style.display = "block";
-  transcriptEl.value = '';
-  status.textContent = 'Recording...';
+          function draw() {
+            analyser.getByteFrequencyData(dataArray);
+            const volume = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+            audioLevel.value = volume / 100;
+            animationId = requestAnimationFrame(draw);
+          }
 
-  mediaRecorder.start();
-  recordBtn.textContent = "⏹️ Stop";
+          draw();
+          audioLevel.style.display = "block";
+          status.textContent = "Recording...";
+          mediaRecorder.start();
+          recordBtn.textContent = "⏹️ Stop Recording";
 
-  mediaRecorder.onstop = async () => {
-    cancelAnimationFrame(animationId);
-    audioLevel.style.display = "none";
-    await audioContext.close();
+          mediaRecorder.onstop = async () => {
+            cancelAnimationFrame(animationId);
+            audioLevel.style.display = "none";
+            await audioContext.close();
 
-    const blob = new Blob(audioChunks, { type: "audio/webm" });
-    const audioURL = URL.createObjectURL(blob);
-    audioPlayback.src = audioURL;
-    audioPlayback.style.display = "block";
-    status.textContent = "Recording complete. Transcribing...";
+            const blob = new Blob(audioChunks, { type: "audio/webm" });
+            const audioURL = URL.createObjectURL(blob);
+            audioPlayback.src = audioURL;
+            audioPlayback.style.display = "block";
+            status.textContent = "Transcribing...";
 
-    const formData = new FormData();
-    formData.append('audio', blob, 'recording.webm');
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
 
-    try {
-      const response = await fetch(`${API_BASE}/api/transcribe`, {
-        method: 'POST',
-        body: formData,
-      });
+            try {
+              const response = await fetch(`${API_BASE}/api/transcribe`, {
+                method: 'POST',
+                body: formData,
+              });
 
-      if (!response.ok) throw new Error('Transcription failed');
+              if (!response.ok) throw new Error("Transcription failed");
+              const data = await response.json();
 
-      const data = await response.json();
-      if (data.transcript) {
-        transcriptEl.value = data.transcript;
-        status.textContent = "Transcription complete.";
-        await sendToChat(data.transcript);
-      }
-    } catch (err) {
-      status.textContent = "Error during transcription.";
-      console.error(err);
-    }
-  };
-});
-
-speakBtn.addEventListener('click', async () => {
-  const text = transcriptEl.value;
-  if (!text.trim()) return;
-
-  try {
-    const response = await fetch(`${API_BASE}/api/tts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-
-    if (!response.ok) throw new Error('TTS failed');
-
-    const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
-    audio.play();
-  } catch (err) {
-    console.error('TTS Error:', err);
-  }
-});
-
-function addMessage(text, sender) {
-  const bubble = document.createElement('div');
-  bubble.classList.add('bubble', sender);
-  bubble.textContent = text;
-  chatContainer.appendChild(bubble);
-  chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-
-async function sendToChat(messageText) {
-  if (!messageText.trim()) return;
-  addMessage(messageText, 'user');
-
-  try {
-    const response = await fetch(`${API_BASE}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: messageText }),
-    });
-
-    if (!response.ok) throw new Error('Chat API error');
-
-    const data = await response.json();
-
-    if (data.reply) {
-      addMessage(data.reply, 'assistant');
-
-      if (data.audioBase64) {
-        const audioReplyBlob = new Blob(
-          [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
-          { type: 'audio/mpeg' }
-        );
-        const audioUrl = URL.createObjectURL(audioReplyBlob);
-        const audio = new Audio(audioUrl);
-        audio.play();
-      }
-    } else {
-      addMessage("⚠️ No reply received from assistant.", 'assistant');
-    }
-  } catch (err) {
-    console.error(err);
-    addMessage("⚠️ Error communicating with chat server.", 'assistant');
-  }
-}
-</script>
-
-</body>
-</html>
+              if (data.transcript) {
+                transcriptEl.value = data.transcript;
+                status.textContent = "Transcription complete.";
+                await send
