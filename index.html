@@ -37,37 +37,6 @@
     audio {
       width: 100%;
     }
-    #chatContainer {
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      padding: 1em;
-      margin-top: 2em;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .bubble {
-      margin: 0.5em 0;
-      padding: 0.6em 1em;
-      border-radius: 15px;
-      max-width: 80%;
-      line-height: 1.4;
-      word-wrap: break-word;
-    }
-    .user {
-      background: #007bff;
-      color: white;
-      margin-left: auto;
-      text-align: right;
-      border-bottom-right-radius: 0;
-    }
-    .assistant {
-      background: #e5e5ea;
-      color: #333;
-      margin-right: auto;
-      text-align: left;
-      border-bottom-left-radius: 0;
-    }
   </style>
 </head>
 <body>
@@ -88,9 +57,6 @@
     <audio id="ttsAudio" controls style="display:none; margin-top:1em;"></audio>
   </div>
 
-  <!-- Chat container added -->
-  <div id="chatContainer"></div>
-
   <script>
     const API_BASE = 'https://fluentbot-mvp-am46.vercel.app/';
 
@@ -98,6 +64,7 @@
     let audioChunks = [];
     let audioContext;
     let analyser;
+    let dataArray;
     let animationId;
 
     const recordBtn = document.getElementById("recordBtn");
@@ -107,47 +74,51 @@
     const transcriptEl = document.getElementById("transcript");
     const speakBtn = document.getElementById("speakBtn");
     const ttsAudio = document.getElementById("ttsAudio");
-    const chatContainer = document.getElementById("chatContainer");
 
     recordBtn.addEventListener("click", async () => {
       if (!mediaRecorder || mediaRecorder.state === "inactive") {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          audioChunks = [];
-
-          mediaRecorder = new MediaRecorder(stream);
-          mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
           audioContext = new AudioContext();
           const source = audioContext.createMediaStreamSource(stream);
           analyser = audioContext.createAnalyser();
           source.connect(analyser);
+          analyser.fftSize = 256;
           const bufferLength = analyser.frequencyBinCount;
-          const dataArray = new Uint8Array(bufferLength);
+          dataArray = new Uint8Array(bufferLength);
 
-          function draw() {
-            analyser.getByteFrequencyData(dataArray);
-            const volume = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
-            audioLevel.value = volume / 100;
-            animationId = requestAnimationFrame(draw);
-          }
-
-          draw();
           audioLevel.style.display = "block";
-          status.textContent = "Recording...";
-          mediaRecorder.start();
-          recordBtn.textContent = "⏹️ Stop Recording";
+
+          function updateMeter() {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength / 255;
+            audioLevel.value = avg;
+            animationId = requestAnimationFrame(updateMeter);
+          }
+          updateMeter();
+
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
 
           mediaRecorder.onstop = async () => {
             cancelAnimationFrame(animationId);
             audioLevel.style.display = "none";
-            await audioContext.close();
+            audioContext.close();
 
             const blob = new Blob(audioChunks, { type: "audio/webm" });
             const audioURL = URL.createObjectURL(blob);
             audioPlayback.src = audioURL;
             audioPlayback.style.display = "block";
-            status.textContent = "Transcribing...";
+            status.textContent = "Recording complete. Transcribing...";
 
             const formData = new FormData();
             formData.append('audio', blob, 'recording.webm');
@@ -158,10 +129,91 @@
                 body: formData,
               });
 
-              if (!response.ok) throw new Error("Transcription failed");
-              const data = await response.json();
+              if (!response.ok) throw new Error('Transcription failed');
 
-              if (data.transcript) {
-                transcriptEl.value = data.transcript;
-                status.textContent = "Transcription complete.";
-                await send
+              const data = await response.json();
+              transcriptEl.value = data.transcript || '';
+              status.textContent = "Transcription complete.";
+            } catch (err) {
+              status.textContent = "Error during transcription.";
+              console.error(err);
+            }
+          };
+
+          mediaRecorder.start();
+          recordBtn.textContent = "🛑 Stop Recording";
+          status.textContent = "Recording...";
+          transcriptEl.value = "";
+          ttsAudio.style.display = "none";
+          ttsAudio.src = "";
+        } catch (err) {
+          console.error('Could not start recording:', err);
+          status.textContent = 'Could not start recording. Please check microphone permissions.';
+        }
+      } else if (mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        recordBtn.textContent = "🎤 Start Recording";
+        status.textContent = "Processing audio...";
+      }
+    });
+
+    speakBtn.addEventListener('click', async () => {
+      const text = transcriptEl.value.trim();
+      if (!text) {
+        alert('Please enter or record some text to speak.');
+        return;
+      }
+
+      status.textContent = "Generating speech...";
+
+      try {
+        const response = await fetch(`${API_BASE}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice: 'Ir1QNHvhaJXbAGhT50w3' }),
+        });
+
+        if (!response.ok) throw new Error('TTS request failed');
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        ttsAudio.src = audioUrl;
+        ttsAudio.style.display = 'block';
+        ttsAudio.play();
+
+        status.textContent = "Playing synthesized speech.";
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Error during speech synthesis.";
+      }
+    });
+  </script>
+<script>
+  async function sendToChat(body) {
+    if (body.message) addMessage(body.message, 'user');
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (data.reply) {
+      addMessage(data.reply, 'assistant');
+
+      const audioReplyBlob = new Blob(
+        [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
+        { type: 'audio/mpeg' }
+      );
+      const audioUrl = URL.createObjectURL(audioReplyBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } else {
+      addMessage("⚠️ Error: No reply received", 'assistant');
+    }
+  }
+</script>
+</body>
+</html>
