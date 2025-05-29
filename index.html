@@ -1,92 +1,265 @@
-<script>
-  const SPEAKING_THRESHOLD = 30;  // tweak this as needed
-  const SILENCE_LIMIT = 30;       // ~30 frames = 0.5 seconds at 60fps
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fluent Hero – Audio Practice</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 2em auto;
+      padding: 1em;
+      background: #f9f9f9;
+      color: #333;
+      line-height: 1.6;
+    }
+    button {
+      padding: 0.5em 1em;
+      font-size: 1rem;
+      border: none;
+      background: #007bff;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    textarea {
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 0.5em;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      resize: vertical;
+    }
+    audio {
+      width: 100%;
+    }
+    .chat-container {
+      margin-top: 2em;
+      background: #fff;
+      border-radius: 8px;
+      padding: 1em;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .message {
+      margin-bottom: 1em;
+      padding: 0.5em 1em;
+      border-radius: 1em;
+      max-width: 80%;
+    }
+    .message.user {
+      background: #d1e7ff;
+      align-self: flex-end;
+      text-align: right;
+    }
+    .message.assistant {
+      background: #e2e2e2;
+      align-self: flex-start;
+    }
+    .messages {
+      display: flex;
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
 
-  let mediaRecorder;
-  let audioChunks = [];
-  let analyser, dataArray, silenceTimer = 0;
-  let stream, audioContext, source;
+  <h1>🎧 Fluent Hero – Audio Practice</h1>
 
-  async function setupMicrophone() {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioContext = new AudioContext();
-    source = audioContext.createMediaStreamSource(stream);
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    source.connect(analyser);
-    startListeningLoop();
-  }
+  <div style="margin-top: 1em;">
+    <button id="recordBtn">🎤 Start Recording</button>
+    <p id="recordingStatus"></p>
+    <progress id="audioLevel" value="0" max="1" style="width: 100%; display: none; margin-top: 0.5em;"></progress>
 
-  function startListeningLoop() {
-    detectSpeech();
-  }
+    <audio id="audioPlayback" controls style="display:none; margin-top:1em;"></audio>
 
-  function detectSpeech() {
-    analyser.getByteFrequencyData(dataArray);
-    const avgVolume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+    <textarea id="transcript" rows="5" style="width: 100%; margin-top:1em; display: none;" placeholder="Transcription will appear here..."></textarea>
 
-    if (avgVolume > SPEAKING_THRESHOLD) {
-      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-        startRecording();
-      }
-      silenceTimer = 0;
-    } else {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        silenceTimer++;
-        if (silenceTimer > SILENCE_LIMIT) {
-          stopRecording();
+    <button id="speakBtn" style="margin-top: 0.5em; display: none;">🔈 Speak Text</button>
+
+    <audio id="ttsAudio" controls style="display:none; margin-top:1em;"></audio>
+  </div>
+
+  <div class="chat-container">
+    <div class="messages" id="chat"></div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://fluentbot-mvp-am46.vercel.app';
+
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let animationId;
+
+    const recordBtn = document.getElementById("recordBtn");
+    const status = document.getElementById("recordingStatus");
+    const audioPlayback = document.getElementById("audioPlayback");
+    const audioLevel = document.getElementById("audioLevel");
+    const transcriptEl = document.getElementById("transcript");
+    const speakBtn = document.getElementById("speakBtn");
+    const ttsAudio = document.getElementById("ttsAudio");
+    const chat = document.getElementById("chat");
+
+    recordBtn.addEventListener("click", async () => {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+          audioContext = new AudioContext();
+          const source = audioContext.createMediaStreamSource(stream);
+          analyser = audioContext.createAnalyser();
+          source.connect(analyser);
+          analyser.fftSize = 256;
+          const bufferLength = analyser.frequencyBinCount;
+          dataArray = new Uint8Array(bufferLength);
+
+          audioLevel.style.display = "block";
+
+          function updateMeter() {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength / 255;
+            audioLevel.value = avg;
+            animationId = requestAnimationFrame(updateMeter);
+          }
+          updateMeter();
+
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            cancelAnimationFrame(animationId);
+            audioLevel.style.display = "none";
+            audioContext.close();
+
+            const blob = new Blob(audioChunks, { type: "audio/webm" });
+            const audioURL = URL.createObjectURL(blob);
+            audioPlayback.src = audioURL;
+            audioPlayback.style.display = "block";
+            status.textContent = "Recording complete. Transcribing...";
+
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
+
+            try {
+              const response = await fetch(`${API_BASE}/api/transcribe`, {
+                method: 'POST',
+                body: formData,
+              });
+
+              if (!response.ok) throw new Error('Transcription failed');
+
+              const data = await response.json();
+              const message = data.transcript || '';
+              transcriptEl.value = message;
+              status.textContent = "Transcription complete.";
+
+              if (message) sendToChat({ message });
+
+            } catch (err) {
+              status.textContent = "Error during transcription.";
+              console.error(err);
+            }
+          };
+
+          mediaRecorder.start();
+          recordBtn.textContent = "🛑 Stop Recording";
+          status.textContent = "Recording...";
+          transcriptEl.value = "";
+          ttsAudio.style.display = "none";
+          ttsAudio.src = "";
+        } catch (err) {
+          console.error('Could not start recording:', err);
+          status.textContent = 'Could not start recording. Please check microphone permissions.';
         }
+      } else if (mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        recordBtn.textContent = "🎤 Start Recording";
+        status.textContent = "Processing audio...";
       }
+    });
+
+    speakBtn.addEventListener('click', async () => {
+      const text = transcriptEl.value.trim();
+      if (!text) {
+        alert('Please enter or record some text to speak.');
+        return;
+      }
+
+      status.textContent = "Generating speech...";
+
+      try {
+        const response = await fetch(`${API_BASE}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice: 'Ir1QNHvhaJXbAGhT50w3' }),
+        });
+
+        if (!response.ok) throw new Error('TTS request failed');
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        ttsAudio.src = audioUrl;
+        ttsAudio.style.display = 'block';
+        ttsAudio.play();
+
+        status.textContent = "Playing synthesized speech.";
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Error during speech synthesis.";
+      }
+    });
+
+    function addMessage(text, role) {
+      const msg = document.createElement('div');
+      msg.className = `message ${role}`;
+      msg.textContent = text;
+      chat.appendChild(msg);
+      chat.scrollTop = chat.scrollHeight;
     }
 
-    requestAnimationFrame(detectSpeech);
-  }
+    async function sendToChat(body) {
+      if (body.message) addMessage(body.message, 'user');
 
-  function startRecording() {
-    console.log("🎙️ Recording started");
-    audioChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
-    mediaRecorder.onstop = handleRecordingStop;
-    mediaRecorder.start();
-  }
-
-  function stopRecording() {
-    console.log("🛑 Recording stopped");
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.stop();
-    }
-  }
-
-  async function handleRecordingStop() {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    const formData = new FormData();
-    formData.append('audio', audioBlob, 'input.webm');
-
-    try {
-      const response = await fetch('/api/chat', {
+      const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
 
-      const audioBuffer = await response.arrayBuffer();
-      const audioCtx = new AudioContext();
-      const decoded = await audioCtx.decodeAudioData(audioBuffer);
-      const source = audioCtx.createBufferSource();
-      source.buffer = decoded;
-      source.connect(audioCtx.destination);
-      source.start();
+      const data = await res.json();
 
-      source.onended = () => {
-        console.log("🔁 Ready for next input...");
-        startListeningLoop(); // continue the loop
-      };
-    } catch (err) {
-      console.error('Error handling audio:', err);
+      if (data.reply) {
+        addMessage(data.reply, 'assistant');
+
+        const audioReplyBlob = new Blob(
+          [Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))],
+          { type: 'audio/mpeg' }
+        );
+        const audioUrl = URL.createObjectURL(audioReplyBlob);
+        const audio = new Audio(audioUrl);
+        audio.play();
+      } else {
+        addMessage("⚠️ Error: No reply received", 'assistant');
+      }
     }
-  }
+  </script>
 
-  // Start everything
-  setupMicrophone();
-</script>
+  <!-- Include the new voice-chat.js module for hands-free voice activation -->
+  <script type="module" src="js/voice-chat.js"></script>
+
+</body>
+</html>
